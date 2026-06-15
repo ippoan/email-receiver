@@ -23,7 +23,6 @@ const baseEnv: Env = {
 describe("handleDtakoEmail", () => {
   beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -66,7 +65,7 @@ describe("handleDtakoEmail", () => {
         );
       }
       if (url.endsWith("/api/dtako/tickets/ticket-1/scraped")) {
-        return new Response("", { status: 204 });
+        return new Response(null, { status: 204 });
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
