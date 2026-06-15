@@ -1,0 +1,82 @@
+name: Dev Release
+
+# main push 毎に `dev-{major}.{minor}.{patch}` tag を自動採番 + GitHub Release
+# (prerelease) を作成し、続けて同じ workflow run で GH Packages へ dev prerelease
+# を npm publish する。consumer は `"@ippoan/email-receiver": "dev"` で取得できる。
+#
+# pattern は ippoan/mcp-cf-workers の dev-release.yml と同等。tag-release.yml Mode B
+# は prefix が non-empty (= 'dev-') の場合 `--latest` を付けない仕様なので、
+# `dev-*` は releases/latest API に出ない (stable consumer 無影響)。
+#
+# GITHUB_TOKEN で push した tag は別 workflow (publish.yml の tag trigger) を発火
+# しない GitHub Actions 仕様のため、tag-push driven にできない。よって採番 job と
+# 同じ run 内で publish まで行う。stable (`v*`) は publish.yml が担当。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - 'vitest.config.ts'
+      - '.github/workflows/dev-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  dev-release:
+    permissions:
+      contents: write
+    uses: ippoan/ci-workflows/.github/workflows/tag-release.yml@main
+    with:
+      prefix: 'dev-'
+      version_prefix: ''
+      bump: patch
+      create_release: true
+
+  publish-dev:
+    needs: dev-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ippoan'
+      - name: Install
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Derive dev version from latest dev-* tag
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          tag="$(git tag -l 'dev-*' --sort=-v:refname | head -1)"
+          if [ -z "$tag" ]; then
+            echo "::error::no dev-* tag found" >&2
+            exit 1
+          fi
+          suffix="${tag#dev-}"
+          base="$(node -p "require('./package.json').version")"
+          npm version "${base}-dev.${suffix}" --no-git-tag-version
+      - name: Publish (dev dist-tag)
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: npm publish --tag dev
