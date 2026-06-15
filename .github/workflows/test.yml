@@ -1,24 +1,22 @@
-name: CI
+name: ci
 
 on:
+  pull_request: {}
   push:
     branches: [main]
-    tags: ['v*']
-  pull_request:
-    branches: [main]
 
+# Required by lib-ci.yml's dual-step auto-merge pattern (mcp-cf-workers と同規約):
+#   - contents: write       → auto-merge job (queues gh pr merge --squash)
+#   - pull-requests: write  → disable-auto-merge + auto-merge jobs
+#   - packages: read        → @ippoan/* GitHub Packages dep install
 permissions:
   contents: write
   pull-requests: write
   packages: read
-  id-token: write
 
 jobs:
   ci:
-    uses: ippoan/ci-workflows/.github/workflows/frontend-ci.yml@main
+    uses: ippoan/ci-workflows/.github/workflows/lib-ci.yml@main
     with:
-      project_type: 'worker'
-      install_command: 'npm install'
-      typecheck_command: 'npx tsc --noEmit'
-      has_deploy: false
+      node_version: '20'
     secrets: inherit

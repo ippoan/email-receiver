@@ -41,9 +41,23 @@ npm test
 ```
 
 CI (`.github/workflows/test.yml`) は `main` への PR ごとに ci-workflows の
-`frontend-ci.yml` (project_type: worker) で typecheck + test を回す。
-`has_deploy: false` 初期設定なので deploy job は走らない。Cloudflare account への
-deploy を有効化する PR で `deploy_staging_script` / `deploy_release_script` を追加する。
+`lib-ci.yml` で typecheck + test を回す (mcp-cf-workers と同規約)。
+
+## 配布 (GitHub Packages)
+
+`@ippoan/email-receiver` として GH Packages に publish する。pattern は
+[`ippoan/mcp-cf-workers`](https://github.com/ippoan/mcp-cf-workers) の dev-release /
+publish を踏襲:
+
+- `.github/workflows/dev-release.yml` — `main` push で `dev-{patch}` tag 採番 +
+  `dev` dist-tag publish。consumer は `"@ippoan/email-receiver": "dev"` で取得。
+- `.github/workflows/publish.yml` — `v*` tag push で `latest` dist-tag publish。
+
+`package.json` の `exports` map を編集する時は `README.md` の export 表も合わせて
+更新する。Worker 本体 (`./` = `src/index.ts`) はそのまま deploy 用、それ以外の
+subpath (`./handlers/dtako` 等) は consumer 用に切り出してある。
+
+Worker 自体の Cloudflare account への deploy は後続 PR で wire する。
 
 ## GitHub 自動化 (重要)
 

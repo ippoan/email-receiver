@@ -51,10 +51,51 @@ npx wrangler dev
 
 Email event はローカル不可なので、handler を直接叩く統合テストは vitest で完結させる。
 
-## デプロイ
+## 配布 (GitHub Packages)
 
-CI が PR merge / tag push で wrangler deploy するように後続 PR で wire する予定。
-現時点では `has_deploy: false` で typecheck + test のみ。手動 deploy を試す場合:
+このリポジトリは Worker 本体 + **再利用可能 handler / parser ライブラリ**として GitHub
+Packages に `@ippoan/email-receiver` で publish される (mcp-cf-workers と同パターン)。
+他の Worker / Nuxt server route から subject parser や handler を import して使える。
+
+| dist-tag | 採番元 | trigger |
+|---|---|---|
+| `dev` | `dev-{patch}` 自動採番 | `main` への push (`.github/workflows/dev-release.yml`) |
+| `latest` | `package.json` の `version` | `v*` tag push (`.github/workflows/publish.yml`) |
+
+consumer 側 (例: 別 Worker repo):
+
+```jsonc
+// package.json
+{
+  "dependencies": {
+    "@ippoan/email-receiver": "dev"   // or "^0.1.0" for stable
+  }
+}
+```
+
+```ts
+import { parseDtakoSubject } from '@ippoan/email-receiver/parsers/dtako-subject';
+import { handleDtakoEmail } from '@ippoan/email-receiver/handlers/dtako';
+```
+
+`.npmrc` で `@ippoan:registry=https://npm.pkg.github.com` を設定し、CI には
+`permissions.packages: read` を付ける。
+
+### export map
+
+| subpath | module |
+|---|---|
+| `@ippoan/email-receiver` | Worker entry (`src/index.ts`、`export default { email() }`) |
+| `@ippoan/email-receiver/handlers` | dispatcher |
+| `@ippoan/email-receiver/handlers/dtako` | dtako handler 本体 |
+| `@ippoan/email-receiver/parsers/dtako-subject` | subject parser |
+| `@ippoan/email-receiver/lib/base64` | base64 helper |
+| `@ippoan/email-receiver/env` | `Env` 型 |
+
+## デプロイ (Worker)
+
+Worker 自体の Cloudflare account への deploy は後続 PR で wire する予定。
+現時点では package publish のみ CI 化。手動 deploy を試す場合:
 
 ```sh
 npx wrangler deploy            # production

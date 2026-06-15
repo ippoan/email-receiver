@@ -1,8 +1,27 @@
 {
-  "name": "email-receiver",
-  "private": true,
+  "name": "@ippoan/email-receiver",
   "version": "0.1.0",
+  "description": "ippoan org の Cloudflare Email Routing 経由で受信したメールを domain 固有 handler に dispatch する Worker + 再利用可能 handler/parser ライブラリ",
   "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./handlers": "./src/handlers/index.ts",
+    "./handlers/dtako": "./src/handlers/dtako.ts",
+    "./parsers/dtako-subject": "./src/parsers/dtako-subject.ts",
+    "./lib/base64": "./src/lib/base64.ts",
+    "./env": "./src/env.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CLAUDE.md"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": "github:ippoan/email-receiver",
+  "license": "UNLICENSED",
   "scripts": {
     "deploy": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging",
@@ -10,6 +29,14 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "postal-mime": "^2.5.1"
+  },
+  "peerDependenciesMeta": {
+    "postal-mime": {
+      "optional": false
+    }
   },
   "dependencies": {
     "postal-mime": "^2.5.1"
