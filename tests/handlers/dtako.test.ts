@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleDtakoEmail, type ParsedEmail } from "../../src/handlers/dtako";
-import type { Env } from "../../src/env";
+import type { RouteTarget } from "../../src/router";
 
 const baseEmail: ParsedEmail = {
   from: "noreply@theearth-np.com",
@@ -11,18 +11,20 @@ const baseEmail: ParsedEmail = {
   receivedAt: "2026-06-15T08:00:00.000Z",
 };
 
-const baseEnv: Env = {
-  ALC_API_BASE: "https://alc-api.example.com",
-  DTAKO_TENANT_ID: "11111111-1111-1111-1111-111111111111",
-  SCRAPER_ENDPOINT: "https://scraper.example.com/scrape-vehicle-setting",
-  DTAKO_R2_PREFIX: "dtako-tickets",
-  INTERNAL_SHARED_SECRET: "test-internal-secret",
-  SCRAPER_API_KEY: "test-scraper-key",
+const baseRoute: RouteTarget = {
+  env: "prod",
+  alcApiBase: "https://alc-api.example.com",
+  internalSharedSecret: "test-internal-secret",
+  tenantId: "11111111-1111-1111-1111-111111111111",
+  scraperEndpoint: "https://scraper.example.com/scrape-vehicle-setting",
+  scraperApiKey: "test-scraper-key",
+  r2Prefix: "dtako-tickets",
 };
 
 describe("handleDtakoEmail", () => {
   beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -32,17 +34,9 @@ describe("handleDtakoEmail", () => {
   it("returns matched:false for non-dtako subject", async () => {
     const result = await handleDtakoEmail(
       { ...baseEmail, subject: "spam" },
-      baseEnv,
+      baseRoute,
     );
     expect(result).toEqual({ matched: false });
-  });
-
-  it("returns matched:true but skips ingest when DTAKO_TENANT_ID is empty", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const result = await handleDtakoEmail(baseEmail, { ...baseEnv, DTAKO_TENANT_ID: "" });
-    expect(result.matched).toBe(true);
-    expect(result.ticketId).toBeUndefined();
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("creates ticket → scrape → patch and returns scraped:true on full success", async () => {
@@ -51,7 +45,7 @@ describe("handleDtakoEmail", () => {
       if (url.endsWith("/api/dtako/tickets")) {
         return new Response(JSON.stringify({ id: "ticket-1" }), { status: 200 });
       }
-      if (url === baseEnv.SCRAPER_ENDPOINT) {
+      if (url === baseRoute.scraperEndpoint) {
         return new Response(
           JSON.stringify({
             comp_id: "27324455",
@@ -70,7 +64,7 @@ describe("handleDtakoEmail", () => {
       throw new Error(`unexpected fetch: ${url}`);
     });
 
-    const result = await handleDtakoEmail(baseEmail, baseEnv);
+    const result = await handleDtakoEmail(baseEmail, baseRoute);
     expect(result).toMatchObject({
       matched: true,
       ticketId: "ticket-1",
@@ -87,7 +81,7 @@ describe("handleDtakoEmail", () => {
       "test-internal-secret",
     );
     expect((createInit.headers as Record<string, string>)["X-Tenant-ID"]).toBe(
-      baseEnv.DTAKO_TENANT_ID,
+      baseRoute.tenantId,
     );
 
     const scrapeCall = fetchSpy.mock.calls[1];
@@ -101,7 +95,7 @@ describe("handleDtakoEmail", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("nope", { status: 500 }),
     );
-    await expect(handleDtakoEmail(baseEmail, baseEnv)).rejects.toThrow(/createTicket 500/);
+    await expect(handleDtakoEmail(baseEmail, baseRoute)).rejects.toThrow(/createTicket 500/);
   });
 
   it("returns scraped:false when scrape step fails (ticket is left open)", async () => {
@@ -113,7 +107,7 @@ describe("handleDtakoEmail", () => {
       return new Response("upstream timeout", { status: 504 });
     });
 
-    const result = await handleDtakoEmail(baseEmail, baseEnv);
+    const result = await handleDtakoEmail(baseEmail, baseRoute);
     expect(result).toMatchObject({
       matched: true,
       ticketId: "ticket-2",
@@ -125,6 +119,6 @@ describe("handleDtakoEmail", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({}), { status: 200 }),
     );
-    await expect(handleDtakoEmail(baseEmail, baseEnv)).rejects.toThrow(/missing id/);
+    await expect(handleDtakoEmail(baseEmail, baseRoute)).rejects.toThrow(/missing id/);
   });
 });

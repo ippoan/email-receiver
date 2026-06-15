@@ -1,32 +1,46 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dispatchEmail } from "../../src/handlers";
-import type { Env } from "../../src/env";
+import type { RouteTarget } from "../../src/router";
 
-const env: Env = {
-  ALC_API_BASE: "https://alc-api.example.com",
-  DTAKO_TENANT_ID: "",
-  SCRAPER_ENDPOINT: "https://scraper.example.com/scrape-vehicle-setting",
-  DTAKO_R2_PREFIX: "dtako-tickets",
-  INTERNAL_SHARED_SECRET: "s",
-  SCRAPER_API_KEY: "s",
+const route: RouteTarget = {
+  env: "prod",
+  alcApiBase: "https://alc-api.example.com",
+  internalSharedSecret: "s",
+  tenantId: "",
+  scraperEndpoint: "https://scraper.example.com/scrape-vehicle-setting",
+  scraperApiKey: "s",
+  r2Prefix: "dtako-tickets",
 };
 
 describe("dispatchEmail", () => {
-  it("returns dtako handler for matching subject", async () => {
+  beforeEach(() => {
+    // tenantId が空でも createTicket は実行されるので、外向き fetch を完全に止める
+    // (subject match まで verify できれば十分なので fetch は 500 で十分)。
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const r = await dispatchEmail(
-      {
-        from: "noreply@example.com",
-        subject: "[web金星号] SDカードエラー通知メール … (16) 十勝800か16",
-        bodyText: null,
-        bodyHtml: null,
-        messageId: null,
-        receivedAt: new Date().toISOString(),
-      },
-      env,
-    );
-    expect(r.handler).toBe("dtako");
-    expect(r.result?.matched).toBe(true);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns dtako handler for matching subject", async () => {
+    // createTicket で例外が出ても matched は true 判定された時点で先に進むので、
+    // dispatch は throw する (caller index.ts で setReject) のが正常 path。
+    await expect(
+      dispatchEmail(
+        {
+          from: "noreply@example.com",
+          subject: "[web金星号] SDカードエラー通知メール … (16) 十勝800か16",
+          bodyText: null,
+          bodyHtml: null,
+          messageId: null,
+          receivedAt: new Date().toISOString(),
+        },
+        route,
+      ),
+    ).rejects.toThrow(/createTicket/);
   });
 
   it("returns null for unmatched subject", async () => {
@@ -39,7 +53,7 @@ describe("dispatchEmail", () => {
         messageId: null,
         receivedAt: new Date().toISOString(),
       },
-      env,
+      route,
     );
     expect(r.handler).toBeNull();
     expect(r.result).toBeNull();

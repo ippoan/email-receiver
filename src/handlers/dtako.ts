@@ -1,4 +1,4 @@
-import type { Env } from "../env";
+import type { RouteTarget } from "../router";
 import { parseDtakoSubject } from "../parsers/dtako-subject";
 
 /**
@@ -16,8 +16,8 @@ import { parseDtakoSubject } from "../parsers/dtako-subject";
  *   - ステップ 3-4 で失敗したら起票は完了している (= "open" の ticket が残る) ので
  *     例外は投げず、ticket status は "open" のまま log を残す。後追いで manual rescrape 可能。
  *
- * 依存先 API は ippoan/rust-alc-api#414 と ohishi-exp/dtako-scraper#5 で実装中。
- * 仕様確定までは 404/501 が返る可能性があるが、wire format は最終形に合わせてある。
+ * route は `pickRoute(host, env)` で host (prod / staging subdomain) ごとに
+ * 解決された endpoint / secret / tenant_id 束。handler は env を直接見ない。
  */
 
 export interface ParsedEmail {
@@ -53,27 +53,20 @@ interface ScrapeResponse {
 
 export async function handleDtakoEmail(
   email: ParsedEmail,
-  env: Env,
+  route: RouteTarget,
 ): Promise<DtakoHandleResult> {
   const parsed = parseDtakoSubject(email.subject);
   if (!parsed) {
     return { matched: false };
   }
 
-  if (!env.DTAKO_TENANT_ID) {
-    console.warn("dtako handler: DTAKO_TENANT_ID is empty, skipping ingest", {
-      subject: email.subject,
-    });
-    return { matched: true, vehicleName: parsed.vehicleName, errorKind: parsed.errorKind };
-  }
-
-  const ticketId = await createTicket(email, parsed.vehicleName, parsed.errorKind, env);
+  const ticketId = await createTicket(email, parsed.vehicleName, parsed.errorKind, route);
 
   // 起票後の scrape + patch は best-effort。失敗時は ticket を open のまま残し、
   // 運用側で手動 retry できるよう log だけ残す。
   try {
-    const scrape = await scrapeVehicleSetting(parsed.vehicleName, email.receivedAt, env);
-    await patchScraped(ticketId, scrape, env);
+    const scrape = await scrapeVehicleSetting(parsed.vehicleName, email.receivedAt, route);
+    await patchScraped(ticketId, scrape, route);
     return {
       matched: true,
       ticketId,
@@ -101,9 +94,9 @@ async function createTicket(
   email: ParsedEmail,
   vehicleName: string,
   errorKind: string,
-  env: Env,
+  route: RouteTarget,
 ): Promise<string> {
-  const url = `${env.ALC_API_BASE.replace(/\/$/, "")}/api/dtako/tickets`;
+  const url = `${route.alcApiBase.replace(/\/$/, "")}/api/dtako/tickets`;
   const body = {
     source: "email",
     source_email_subject: email.subject,
@@ -118,8 +111,8 @@ async function createTicket(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Internal-Shared-Secret": env.INTERNAL_SHARED_SECRET,
-      "X-Tenant-ID": env.DTAKO_TENANT_ID,
+      "X-Internal-Shared-Secret": route.internalSharedSecret,
+      "X-Tenant-ID": route.tenantId,
     },
     body: JSON.stringify(body),
   });
@@ -137,13 +130,13 @@ async function createTicket(
 async function scrapeVehicleSetting(
   vehicleName: string,
   receivedAt: string,
-  env: Env,
+  route: RouteTarget,
 ): Promise<ScrapeResponse> {
-  const res = await fetch(env.SCRAPER_ENDPOINT, {
+  const res = await fetch(route.scraperEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Scraper-API-Key": env.SCRAPER_API_KEY,
+      "X-Scraper-API-Key": route.scraperApiKey,
     },
     body: JSON.stringify({
       vehicle_name: vehicleName,
@@ -161,9 +154,9 @@ async function scrapeVehicleSetting(
 async function patchScraped(
   ticketId: string,
   scrape: ScrapeResponse,
-  env: Env,
+  route: RouteTarget,
 ): Promise<void> {
-  const url = `${env.ALC_API_BASE.replace(/\/$/, "")}/api/dtako/tickets/${ticketId}/scraped`;
+  const url = `${route.alcApiBase.replace(/\/$/, "")}/api/dtako/tickets/${ticketId}/scraped`;
   const body = {
     comp_id: scrape.comp_id ?? null,
     unko_no: scrape.unko_no ?? null,
@@ -176,8 +169,8 @@ async function patchScraped(
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      "X-Internal-Shared-Secret": env.INTERNAL_SHARED_SECRET,
-      "X-Tenant-ID": env.DTAKO_TENANT_ID,
+      "X-Internal-Shared-Secret": route.internalSharedSecret,
+      "X-Tenant-ID": route.tenantId,
     },
     body: JSON.stringify(body),
   });

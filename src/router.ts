@@ -1,0 +1,87 @@
+import type { Env } from "./env";
+
+/**
+ * host (subdomain) を見て env を解決した「1 配送先分の設定束」。
+ *
+ * 現在は 1 社運用なので `tenantId` も env 固定だが、将来 multi-tenant 化する時は
+ * `pickRoute()` 内で local-part / DB lookup を足して `tenantId` を解決する形に拡張する
+ * (handler 側のシグネチャは変わらない)。
+ */
+export interface RouteTarget {
+  env: "prod" | "staging";
+  alcApiBase: string;
+  internalSharedSecret: string;
+  tenantId: string;
+  scraperEndpoint: string;
+  scraperApiKey: string;
+  r2Prefix: string;
+}
+
+const DEFAULT_PROD_HOST = "dtako.ippoan.org";
+const DEFAULT_STAGING_HOST = "dtako-staging.ippoan.org";
+
+function asTarget(
+  envName: "prod" | "staging",
+  alcApiBase: string | undefined,
+  internalSharedSecret: string | undefined,
+  tenantId: string | undefined,
+  scraperEndpoint: string | undefined,
+  scraperApiKey: string | undefined,
+  r2Prefix: string | undefined,
+): RouteTarget | null {
+  if (
+    !alcApiBase || !internalSharedSecret || !tenantId ||
+    !scraperEndpoint || !scraperApiKey
+  ) {
+    return null;
+  }
+  return {
+    env: envName,
+    alcApiBase,
+    internalSharedSecret,
+    tenantId,
+    scraperEndpoint,
+    scraperApiKey,
+    r2Prefix: r2Prefix ?? "",
+  };
+}
+
+/**
+ * `message.to` の host 部から prod / staging を分岐する。
+ *
+ * - prod host にマッチ → prod の env を使う
+ * - staging host にマッチ → staging の env を使う (どれか欠ければ null)
+ * - それ以外 → null (silent drop)
+ *
+ * catch-all を 1 つの prod Worker で受けて中で分岐するため、staging Worker
+ * (`email-receiver-staging`) は実受信しない設計 (nuxt-notify と同じ)。
+ */
+export function pickRoute(host: string, env: Env): RouteTarget | null {
+  const prodHost = (env.PROD_HOST ?? DEFAULT_PROD_HOST).toLowerCase();
+  const stagingHost = (env.STAGING_HOST ?? DEFAULT_STAGING_HOST).toLowerCase();
+  const h = host.toLowerCase();
+
+  if (h === prodHost) {
+    return asTarget(
+      "prod",
+      env.ALC_API_BASE,
+      env.INTERNAL_SHARED_SECRET,
+      env.DTAKO_TENANT_ID,
+      env.SCRAPER_ENDPOINT,
+      env.SCRAPER_API_KEY,
+      env.DTAKO_R2_PREFIX,
+    );
+  }
+  if (h === stagingHost) {
+    return asTarget(
+      "staging",
+      env.ALC_API_BASE_STAGING,
+      env.INTERNAL_SHARED_SECRET_STAGING,
+      env.DTAKO_TENANT_ID_STAGING,
+      env.SCRAPER_ENDPOINT_STAGING,
+      env.SCRAPER_API_KEY_STAGING,
+      env.DTAKO_R2_PREFIX,
+    );
+  }
+  return null;
+}
