@@ -13,13 +13,19 @@ head_sampling_rate = 1.0
 # 受信フロー (nuxt-notify workers/email-receiver と同パターン):
 #   Cloudflare Email Routing の zone catch-all (`*@ippoan.org`) → この prod Worker
 #     → message.to の host (subdomain) を見て prod / staging を分岐
-#         - dtako.ippoan.org           → prod  (ALC_API_BASE + INTERNAL_SHARED_SECRET + DTAKO_TENANT_ID + SCRAPER_*)
-#         - dtako-staging.ippoan.org   → staging (*_STAGING binding を使う)
+#         - dtako.ippoan.org           → prod    (ALC_API_BASE / DTAKO_TENANT_ID / SCRAPER_ENDPOINT)
+#         - dtako-staging.ippoan.org   → staging (*_STAGING var を使う、secret は同一)
 #         - その他                      → silent drop
 #     → matching handler が外部 API (rust-alc-api / dtako-scraper) を叩く
 #
 # Email Routing の catch-all は 1 zone あたり 1 つしか張れないため、staging Worker
 # (`email-receiver-staging`) は実受信せず CI deploy / wrangler dev / canary 用途のみ。
+#
+# shared secret (INTERNAL_SHARED_SECRET / SCRAPER_API_KEY) は prod / staging で同一
+# 値を共有する (= binding は 1 つ)。auth-worker など既存 4 consumer も同方式で、
+# 2026-05-24 に `mcp-internal-shared-secret-{prod,staging}` を統合した経緯あり
+# (Refs auth-worker CLAUDE.md)。staging で値を分けたい場合は別途 _STAGING binding を
+# 足す形に拡張する (env.ts と router.ts も同時に変える)。
 #
 # 将来 multi-tenant 化する場合は `src/router.ts` の pickRoute() 内で local-part / DB
 # 検索を足して `tenantId` を解決する形に拡張する (handler 側のシグネチャ不変)。
@@ -28,7 +34,6 @@ head_sampling_rate = 1.0
 # `wrangler secret put` は使わない (= per-worker env var だと
 # secrets-inventory get_drift から見えない false negative リスクがあるため)。
 
-# ---- prod ----
 [[secrets_store_secrets]]
 binding = "INTERNAL_SHARED_SECRET"
 store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
@@ -39,17 +44,6 @@ binding = "SCRAPER_API_KEY"
 store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
 secret_name = "dtako-scraper-api-key"
 
-# ---- staging (prod Worker に同居、host で分岐) ----
-[[secrets_store_secrets]]
-binding = "INTERNAL_SHARED_SECRET_STAGING"
-store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
-secret_name = "INTERNAL_SHARED_SECRET_STAGING"
-
-[[secrets_store_secrets]]
-binding = "SCRAPER_API_KEY_STAGING"
-store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
-secret_name = "dtako-scraper-api-key-staging"
-
 [vars]
 # prod backend / scraper / tenant
 ALC_API_BASE = "https://alc-api.ippoan.org"
@@ -57,7 +51,7 @@ DTAKO_TENANT_ID = ""
 SCRAPER_ENDPOINT = "https://dtako-scraper-566bls5vfq-an.a.run.app/scrape-vehicle-setting"
 DTAKO_R2_PREFIX = "dtako-tickets"
 
-# staging backend / scraper / tenant (host=dtako-staging.ippoan.org 用)
+# staging backend / scraper / tenant (host=dtako-staging.ippoan.org 用、secret は共有)
 ALC_API_BASE_STAGING = "https://rust-alc-api-staging-566bls5vfq-an.a.run.app"
 DTAKO_TENANT_ID_STAGING = ""
 SCRAPER_ENDPOINT_STAGING = "https://dtako-scraper-staging-566bls5vfq-an.a.run.app/scrape-vehicle-setting"
@@ -82,9 +76,9 @@ STAGING_HOST = "dtako-staging.ippoan.org"
 [[env.staging.secrets_store_secrets]]
 binding = "INTERNAL_SHARED_SECRET"
 store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
-secret_name = "INTERNAL_SHARED_SECRET_STAGING"
+secret_name = "INTERNAL_SHARED_SECRET"
 
 [[env.staging.secrets_store_secrets]]
 binding = "SCRAPER_API_KEY"
 store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
-secret_name = "dtako-scraper-api-key-staging"
+secret_name = "dtako-scraper-api-key"
