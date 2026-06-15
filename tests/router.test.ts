@@ -3,17 +3,19 @@ import { pickRoute } from "../src/router";
 import type { Env } from "../src/env";
 
 const fullEnv: Env = {
+  // shared
+  INTERNAL_SHARED_SECRET: "shared-internal",
+  SCRAPER_API_KEY: "shared-scraper",
+  DTAKO_R2_PREFIX: "dtako-tickets",
+  // prod
   ALC_API_BASE: "https://alc-api.example.com",
   DTAKO_TENANT_ID: "11111111-1111-1111-1111-111111111111",
   SCRAPER_ENDPOINT: "https://scraper.example.com/scrape-vehicle-setting",
-  DTAKO_R2_PREFIX: "dtako-tickets",
-  INTERNAL_SHARED_SECRET: "prod-internal",
-  SCRAPER_API_KEY: "prod-scraper",
+  // staging
   ALC_API_BASE_STAGING: "https://alc-api-staging.example.com",
   DTAKO_TENANT_ID_STAGING: "22222222-2222-2222-2222-222222222222",
   SCRAPER_ENDPOINT_STAGING: "https://scraper-staging.example.com/scrape-vehicle-setting",
-  INTERNAL_SHARED_SECRET_STAGING: "staging-internal",
-  SCRAPER_API_KEY_STAGING: "staging-scraper",
+  // hosts
   PROD_HOST: "dtako.ippoan.org",
   STAGING_HOST: "dtako-staging.ippoan.org",
 };
@@ -24,21 +26,23 @@ describe("pickRoute", () => {
     expect(r).toEqual({
       env: "prod",
       alcApiBase: "https://alc-api.example.com",
-      internalSharedSecret: "prod-internal",
+      internalSharedSecret: "shared-internal",
       tenantId: "11111111-1111-1111-1111-111111111111",
       scraperEndpoint: "https://scraper.example.com/scrape-vehicle-setting",
-      scraperApiKey: "prod-scraper",
+      scraperApiKey: "shared-scraper",
       r2Prefix: "dtako-tickets",
     });
   });
 
-  it("returns staging target for staging host", () => {
+  it("returns staging target reusing shared secrets but staging endpoint / tenant", () => {
     const r = pickRoute("dtako-staging.ippoan.org", fullEnv);
     expect(r?.env).toBe("staging");
     expect(r?.alcApiBase).toBe("https://alc-api-staging.example.com");
     expect(r?.tenantId).toBe("22222222-2222-2222-2222-222222222222");
-    expect(r?.internalSharedSecret).toBe("staging-internal");
-    expect(r?.scraperApiKey).toBe("staging-scraper");
+    expect(r?.scraperEndpoint).toBe("https://scraper-staging.example.com/scrape-vehicle-setting");
+    // secret は prod / staging で同一値 (Refs auth-worker CLAUDE.md "2026-05-24: 統合")
+    expect(r?.internalSharedSecret).toBe("shared-internal");
+    expect(r?.scraperApiKey).toBe("shared-scraper");
   });
 
   it("is case-insensitive on host", () => {
@@ -58,12 +62,12 @@ describe("pickRoute", () => {
 
   it("returns null when staging env is missing required values", () => {
     const noStaging: Env = {
+      INTERNAL_SHARED_SECRET: fullEnv.INTERNAL_SHARED_SECRET,
+      SCRAPER_API_KEY: fullEnv.SCRAPER_API_KEY,
+      DTAKO_R2_PREFIX: fullEnv.DTAKO_R2_PREFIX,
       ALC_API_BASE: fullEnv.ALC_API_BASE,
       DTAKO_TENANT_ID: fullEnv.DTAKO_TENANT_ID,
       SCRAPER_ENDPOINT: fullEnv.SCRAPER_ENDPOINT,
-      DTAKO_R2_PREFIX: fullEnv.DTAKO_R2_PREFIX,
-      INTERNAL_SHARED_SECRET: fullEnv.INTERNAL_SHARED_SECRET,
-      SCRAPER_API_KEY: fullEnv.SCRAPER_API_KEY,
       PROD_HOST: fullEnv.PROD_HOST,
       STAGING_HOST: fullEnv.STAGING_HOST,
     };

@@ -6,6 +6,11 @@ import type { Env } from "./env";
  * 現在は 1 社運用なので `tenantId` も env 固定だが、将来 multi-tenant 化する時は
  * `pickRoute()` 内で local-part / DB lookup を足して `tenantId` を解決する形に拡張する
  * (handler 側のシグネチャは変わらない)。
+ *
+ * shared secret (`INTERNAL_SHARED_SECRET` / `SCRAPER_API_KEY`) は prod / staging で
+ * 同一値を共有する (auth-worker など既存 4 consumer も同方式、Refs auth-worker
+ * CLAUDE.md "2026-05-24: prod/staging 統合 (旧 mcp-internal-shared-secret-{prod,staging})")。
+ * 実環境の切り分けは endpoint と tenant_id だけで完結する。
  */
 export interface RouteTarget {
   env: "prod" | "staging";
@@ -50,7 +55,8 @@ function asTarget(
  * `message.to` の host 部から prod / staging を分岐する。
  *
  * - prod host にマッチ → prod の env を使う
- * - staging host にマッチ → staging の env を使う (どれか欠ければ null)
+ * - staging host にマッチ → 同じ secret を使い、endpoint / tenant_id だけ staging 用に差し替える
+ *   (どれか欠ければ null)
  * - それ以外 → null (silent drop)
  *
  * catch-all を 1 つの prod Worker で受けて中で分岐するため、staging Worker
@@ -76,10 +82,10 @@ export function pickRoute(host: string, env: Env): RouteTarget | null {
     return asTarget(
       "staging",
       env.ALC_API_BASE_STAGING,
-      env.INTERNAL_SHARED_SECRET_STAGING,
+      env.INTERNAL_SHARED_SECRET,
       env.DTAKO_TENANT_ID_STAGING,
       env.SCRAPER_ENDPOINT_STAGING,
-      env.SCRAPER_API_KEY_STAGING,
+      env.SCRAPER_API_KEY,
       env.DTAKO_R2_PREFIX,
     );
   }
