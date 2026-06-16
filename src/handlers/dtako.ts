@@ -107,6 +107,12 @@ async function createTicket(
     error_kind: errorKind,
     raw_email_text: email.bodyText,
   };
+  const sec = route.internalSharedSecret;
+  console.log(
+    `dtako handler: createTicket fingerprint (route=${route.env} url=${url} ` +
+      `tenant=${route.tenantId} secret_len=${sec.length} ` +
+      `secret_head=${sec.slice(0, 4)} secret_tail=${sec.slice(-4)})`,
+  );
   const res = await fetch(url, {
     method: "POST",
     headers: {
