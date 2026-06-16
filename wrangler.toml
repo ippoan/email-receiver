@@ -53,7 +53,9 @@ DTAKO_R2_PREFIX = "dtako-tickets"
 
 # staging backend / scraper / tenant (host=dtako-staging.ippoan.org 用、secret は共有)
 ALC_API_BASE_STAGING = "https://rust-alc-api-staging-566bls5vfq-an.a.run.app"
-DTAKO_TENANT_ID_STAGING = ""
+# staging Supabase の test tenant UUID (Refs rust-alc-api staging/test-data.json)。
+# rust-alc-api staging は揮発 DB なので毎回マイグレーション後にこの UUID で再投入される。
+DTAKO_TENANT_ID_STAGING = "11111111-1111-1111-1111-111111111111"
 SCRAPER_ENDPOINT_STAGING = "https://dtako-scraper-staging-566bls5vfq-an.a.run.app/scrape-vehicle-setting"
 
 # host 分岐の subdomain (省略時 router.ts の DEFAULT_*)
@@ -67,7 +69,8 @@ name = "email-receiver-staging"
 
 [env.staging.vars]
 ALC_API_BASE = "https://rust-alc-api-staging-566bls5vfq-an.a.run.app"
-DTAKO_TENANT_ID = ""
+# rust-alc-api staging の test tenant UUID
+DTAKO_TENANT_ID = "11111111-1111-1111-1111-111111111111"
 SCRAPER_ENDPOINT = "https://dtako-scraper-staging-566bls5vfq-an.a.run.app/scrape-vehicle-setting"
 DTAKO_R2_PREFIX = "dtako-tickets-staging"
 PROD_HOST = "dtako-staging.ippoan.org"
