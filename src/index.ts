@@ -31,16 +31,11 @@ export default {
     const route = pickRoute(hostRaw, env);
     if (!route) {
       // どの host にも一致しなかった / required env 欠落で silent drop。
-      // 切り分け用に host・設定値・各 required field の有無/型を message 文字列に
-      // 埋める (構造化引数は CF Observability に出ない)。secret は値を出さず
-      // presence + typeof のみ (= 漏洩なし)。
+      // CF Observability は console.log の構造化第2引数 (`{ ... }`) を展開
+      // しないため、切り分け用情報は message 文字列に直接埋める。
       console.log(
         `email-receiver: no route for host (to=${message.to} host=${hostRaw} ` +
-          `prodHost=${env.PROD_HOST ?? "<default>"} stagingHost=${env.STAGING_HOST ?? "<default>"} ` +
-          `hasAlcBase=${!!env.ALC_API_BASE} hasTenant=${!!env.DTAKO_TENANT_ID} ` +
-          `hasScraperEp=${!!env.SCRAPER_ENDPOINT} ` +
-          `iss=${typeof env.INTERNAL_SHARED_SECRET}/${!!env.INTERNAL_SHARED_SECRET} ` +
-          `sak=${typeof env.SCRAPER_API_KEY}/${!!env.SCRAPER_API_KEY})`,
+          `prodHost=${env.PROD_HOST ?? "<default>"} stagingHost=${env.STAGING_HOST ?? "<default>"})`,
       );
       return;
     }
@@ -72,18 +67,19 @@ export default {
 
     if (!dispatch.handler) {
       // どの handler にもマッチしなかった: silent drop。
-      console.log("email-receiver: no handler matched", {
-        route: route.env,
-        from: email.from,
-        subject: email.subject,
-      });
+      // CF Observability は構造化引数を展開しないため message 文字列に埋める。
+      console.log(
+        `email-receiver: no handler matched (route=${route.env} ` +
+          `from=${email.from ?? "<null>"} subject=${email.subject ?? "<null>"})`,
+      );
       return;
     }
 
-    console.log("email-receiver: handler matched", {
-      route: route.env,
-      handler: dispatch.handler,
-      result: dispatch.result,
-    });
+    console.log(
+      `email-receiver: handler matched (route=${route.env} handler=${dispatch.handler} ` +
+        `ticketId=${dispatch.result?.ticketId ?? "<none>"} ` +
+        `scraped=${dispatch.result?.scraped ?? false} ` +
+        `vehicle=${dispatch.result?.vehicleName ?? "<none>"})`,
+    );
   },
 };
