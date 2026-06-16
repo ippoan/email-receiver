@@ -94,8 +94,18 @@ import { handleDtakoEmail } from '@ippoan/email-receiver/handlers/dtako';
 
 ## デプロイ (Worker)
 
-Worker 自体の Cloudflare account への deploy は後続 PR で wire する予定。
-現時点では package publish のみ CI 化。手動 deploy を試す場合:
+`.github/workflows/test.yml` (`frontend-ci.yml` reusable) で CI deploy 配線済み:
+
+| trigger | 結果 |
+|---|---|
+| PR open / synchronize / main push | `wrangler deploy --env staging` で `email-receiver-staging` を deploy |
+| `v*` tag push | `wrangler deploy` で `email-receiver` (prod) を deploy |
+
+Email Routing の catch-all は zone あたり 1 個制約のため、実受信は **prod
+Worker のみ**。staging Worker は `wrangler dev` / canary 確認用 (`message.to`
+host が prod Worker 内で `pickRoute()` され、staging endpoint を叩く設計)。
+
+手動 deploy:
 
 ```sh
 npx wrangler deploy            # production
