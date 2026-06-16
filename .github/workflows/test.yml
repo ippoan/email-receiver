@@ -10,10 +10,15 @@ on:
 #   - contents: write       → auto-merge job (queues gh pr merge --squash)
 #   - pull-requests: write  → disable-auto-merge + auto-merge jobs
 #   - packages: read        → @ippoan/* GitHub Packages dep install
+#   - id-token: write       → frontend-ci.yml の secret-verify nested job が parse
+#                              時に要求する (今回 secret-verify は使わないが、reusable
+#                              の parse-time permission check で startup_failure に
+#                              なるため必須)。Refs ippoan/ci-workflows CLAUDE.md
 permissions:
   contents: write
   pull-requests: write
   packages: read
+  id-token: write
 
 jobs:
   ci:
