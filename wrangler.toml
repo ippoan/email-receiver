@@ -33,6 +33,12 @@ head_sampling_rate = 1.0
 # 認証 secret は CF Secrets Store binding 経由で配布する。
 # `wrangler secret put` は使わない (= per-worker env var だと
 # secrets-inventory get_drift から見えない false negative リスクがあるため)。
+#
+# 2026-06-16: GCP/CF 値 drift で email-receiver から rust-alc-api ingest が
+# 401 を踏み、`secret-inject --rotate` で INTERNAL_SHARED_SECRET を rotate。
+# CF Secrets Store binding は Worker isolate に value をキャッシュするため、
+# rotate 後の新値を読み直すには Worker を **再 deploy** して isolate を作り直す
+# 必要がある (本コメント追加は CI deploy trigger 目的、functional 変更なし)。
 
 [[secrets_store_secrets]]
 binding = "INTERNAL_SHARED_SECRET"
