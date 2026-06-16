@@ -23,13 +23,19 @@ export default {
     // に送られうるため絶対に reject しない)。
     const [, hostRaw] = message.to.split("@");
     if (!hostRaw) {
-      console.log("email-receiver: missing host", { to: message.to });
+      // host 実値は CF Observability の構造化引数に出ないため message 文字列に埋める。
+      console.log(`email-receiver: missing host (to=${message.to})`);
       return;
     }
 
     const route = pickRoute(hostRaw, env);
     if (!route) {
-      console.log("email-receiver: no route for host", { to: message.to });
+      // どの host にも一致しなかった / required env 欠落で silent drop。
+      // 切り分け用に host と設定値を message 文字列に埋める (構造化引数は出ない)。
+      console.log(
+        `email-receiver: no route for host (to=${message.to} host=${hostRaw} ` +
+          `prodHost=${env.PROD_HOST ?? "<default>"} stagingHost=${env.STAGING_HOST ?? "<default>"})`,
+      );
       return;
     }
 
