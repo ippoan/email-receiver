@@ -107,11 +107,10 @@ async function createTicket(
     error_kind: errorKind,
     raw_email_text: email.bodyText,
   };
-  const sec = route.internalSharedSecret;
+  const secretFp = await sha256Prefix(route.internalSharedSecret);
   console.log(
     `dtako handler: createTicket fingerprint (route=${route.env} url=${url} ` +
-      `tenant=${route.tenantId} secret_len=${sec.length} ` +
-      `secret_head=${sec.slice(0, 4)} secret_tail=${sec.slice(-4)})`,
+      `tenant=${route.tenantId} secret_sha256_prefix=${secretFp})`,
   );
   const res = await fetch(url, {
     method: "POST",
@@ -155,6 +154,21 @@ async function scrapeVehicleSetting(
     throw new Error(`scrape ${res.status}: ${text.slice(0, 200)}`);
   }
   return (await res.json()) as ScrapeResponse;
+}
+
+/**
+ * 非可逆な fingerprint (SHA-256 hex 先頭 8 文字) を返す。secret 比較診断専用。
+ * partial leak を避けるため length / head / tail は出さない。
+ * 同値判定したい相手 (rust-alc-api Cloud Run env / GCP Secret Manager) 側でも
+ * `sha256(secret).hex[0..8]` を計算して直接突合する。
+ */
+async function sha256Prefix(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", buf);
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hex.slice(0, 8);
 }
 
 async function patchScraped(
