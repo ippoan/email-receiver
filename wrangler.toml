@@ -67,6 +67,14 @@ STAGING_HOST = "dtako-staging.ippoan.org"
 [env.staging]
 name = "email-receiver-staging"
 
+# top-level [observability] は named env (= [env.staging]) に自動継承されないため
+# (Cloudflare wrangler の仕様)、staging Worker でもログを Observability に出すには
+# 明示再宣言が必須。これが無いと email event のログが一切見えず、routing rule の
+# destination を email-receiver-staging に向けても挙動を確認できない。
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1.0
+
 [env.staging.vars]
 ALC_API_BASE = "https://rust-alc-api-staging-566bls5vfq-an.a.run.app"
 # rust-alc-api staging の test tenant UUID
