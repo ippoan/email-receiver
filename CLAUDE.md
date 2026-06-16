@@ -41,7 +41,9 @@ npm test
 ```
 
 CI (`.github/workflows/test.yml`) は `main` への PR ごとに ci-workflows の
-`lib-ci.yml` で typecheck + test を回す (mcp-cf-workers と同規約)。
+`frontend-ci.yml` (project_type: worker) で typecheck + test + `wrangler deploy`
+を回す。PR / main push → staging Worker (`email-receiver-staging`) deploy、
+`v*` tag push → prod Worker (`email-receiver`) deploy。
 
 ## 配布 (GitHub Packages)
 
@@ -57,7 +59,9 @@ publish を踏襲:
 更新する。Worker 本体 (`./` = `src/index.ts`) はそのまま deploy 用、それ以外の
 subpath (`./handlers/dtako` 等) は consumer 用に切り出してある。
 
-Worker 自体の Cloudflare account への deploy は後続 PR で wire する。
+Worker 自体の Cloudflare account への deploy は `test.yml` (frontend-ci.yml)
+で配線済み: PR / main push で `email-receiver-staging`、`v*` tag で
+`email-receiver` (prod) が `wrangler deploy` される。
 
 ## GitHub 自動化 (重要)
 
