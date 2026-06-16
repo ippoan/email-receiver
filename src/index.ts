@@ -44,7 +44,11 @@ export default {
     try {
       parsed = await PostalMime.parse(message.raw);
     } catch (e) {
-      message.setReject(`MIME parse failed: ${(e as Error).message}`);
+      // setReject だけだと CF Observability に reject 理由が残らない
+      // (bounce を見ない限り見えない)。console.error で実エラーを残す。
+      const reason = `MIME parse failed: ${(e as Error).message}`;
+      console.error(`email-receiver: setReject (route=${route.env} reason=${reason})`);
+      message.setReject(reason);
       return;
     }
 
@@ -61,7 +65,15 @@ export default {
     try {
       dispatch = await dispatchEmail(email, route);
     } catch (e) {
-      message.setReject(`Handler failed: ${(e as Error).message}`);
+      // dispatchEmail (= handleDtakoEmail) は createTicket 等の throw を握り
+      // つぶさず投げ直す設計。ここで setReject だけ呼ぶと CF Observability に
+      // 何が起きたか残らないため、必ず console.error で実エラーを残す。
+      const reason = `Handler failed: ${(e as Error).message}`;
+      console.error(
+        `email-receiver: setReject (route=${route.env} from=${email.from ?? "<null>"} ` +
+          `subject=${email.subject ?? "<null>"} reason=${reason})`,
+      );
+      message.setReject(reason);
       return;
     }
 
