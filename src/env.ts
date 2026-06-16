@@ -1,4 +1,19 @@
 /**
+ * Cloudflare Secrets Store binding の runtime 型。
+ *
+ * `wrangler.toml` の `[[secrets_store_secrets]]` で宣言した binding は **string ではなく**
+ * `.get(): Promise<string>` を持つ object として attach される。string として直接 access
+ * すると `String(obj)` の toString 表現 (= secret 値とは無関係) が流れ込むため、必ず
+ * `resolveSecretBinding()` 経由で `.get()` を呼んで値を取り出す。
+ *
+ * 2026-06-16: この扱い漏れが root cause で `INTERNAL_SHARED_SECRET` を rotate しても
+ * Worker fingerprint が `ad24cc83` のまま固定し epic e2e が 401 を踏み続けた
+ * (Refs ippoan/email-receiver#1)。同じ罠を踏まないため型を分離して resolve を強制する。
+ */
+export type SecretsStoreSecret = { get(): Promise<string> };
+export type SecretBinding = SecretsStoreSecret | string | undefined;
+
+/**
  * Worker bindings + vars.
  *
  * 1 つの prod Worker が `*@ippoan.org` の catch-all を受け、`message.to` の host
@@ -13,10 +28,10 @@
  */
 export interface Env {
   // ---- shared (prod / staging 共通) ----
-  /** rust-alc-api との shared secret (Secrets Store binding)。 */
-  INTERNAL_SHARED_SECRET: string;
-  /** dtako-scraper との shared secret (Secrets Store binding)。 */
-  SCRAPER_API_KEY: string;
+  /** rust-alc-api との shared secret (Secrets Store binding)。`.get()` 経由でのみ実値を取れる。 */
+  INTERNAL_SHARED_SECRET: SecretBinding;
+  /** dtako-scraper との shared secret (Secrets Store binding)。`.get()` 経由でのみ実値を取れる。 */
+  SCRAPER_API_KEY: SecretBinding;
   /** R2 保管時の key prefix (将来 R2 binding 追加時に使用)。 */
   DTAKO_R2_PREFIX: string;
 
@@ -40,4 +55,31 @@ export interface Env {
   PROD_HOST?: string;
   /** staging を受ける subdomain (e.g. `dtako-staging.ippoan.org`)。 */
   STAGING_HOST?: string;
+}
+
+/**
+ * Secrets Store binding か legacy plain string かを問わず実値を取り出す。
+ *
+ * - `string` → そのまま返す (wrangler dev / mock env / 将来の plain secret 用)
+ * - `SecretsStoreSecret` (`.get()` を持つ object) → `await binding.get()` で resolve
+ * - その他 (undefined / null / 取得失敗) → `null`
+ *
+ * auth-worker `src/handlers/mcp-introspect.ts::resolveSecretBinding` と同実装。
+ */
+export async function resolveSecretBinding(
+  binding: SecretBinding,
+): Promise<string | null> {
+  if (!binding) return null;
+  if (typeof binding === "string") return binding;
+  if (
+    typeof binding === "object" && binding !== null &&
+    typeof (binding as { get?: unknown }).get === "function"
+  ) {
+    try {
+      return await (binding as SecretsStoreSecret).get();
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }

@@ -1,4 +1,4 @@
-import type { Env } from "./env";
+import { type Env, resolveSecretBinding } from "./env";
 
 /**
  * host (subdomain) を見て env を解決した「1 配送先分の設定束」。
@@ -61,20 +61,28 @@ function asTarget(
  *
  * catch-all を 1 つの prod Worker で受けて中で分岐するため、staging Worker
  * (`email-receiver-staging`) は実受信しない設計 (nuxt-notify と同じ)。
+ *
+ * Secrets Store binding は `.get()` 経由で resolve しないと実値が取れない (string として
+ * 直接 access すると object の toString 表現が流れる)。`resolveSecretBinding()` で
+ * 必ず実値に変換する。これが漏れていたのが epic e2e 401 の root cause
+ * (Refs ippoan/email-receiver#1)。
  */
-export function pickRoute(host: string, env: Env): RouteTarget | null {
+export async function pickRoute(host: string, env: Env): Promise<RouteTarget | null> {
   const prodHost = (env.PROD_HOST ?? DEFAULT_PROD_HOST).toLowerCase();
   const stagingHost = (env.STAGING_HOST ?? DEFAULT_STAGING_HOST).toLowerCase();
   const h = host.toLowerCase();
+
+  const internalSharedSecret = await resolveSecretBinding(env.INTERNAL_SHARED_SECRET);
+  const scraperApiKey = await resolveSecretBinding(env.SCRAPER_API_KEY);
 
   if (h === prodHost) {
     return asTarget(
       "prod",
       env.ALC_API_BASE,
-      env.INTERNAL_SHARED_SECRET,
+      internalSharedSecret ?? undefined,
       env.DTAKO_TENANT_ID,
       env.SCRAPER_ENDPOINT,
-      env.SCRAPER_API_KEY,
+      scraperApiKey ?? undefined,
       env.DTAKO_R2_PREFIX,
     );
   }
@@ -82,10 +90,10 @@ export function pickRoute(host: string, env: Env): RouteTarget | null {
     return asTarget(
       "staging",
       env.ALC_API_BASE_STAGING,
-      env.INTERNAL_SHARED_SECRET,
+      internalSharedSecret ?? undefined,
       env.DTAKO_TENANT_ID_STAGING,
       env.SCRAPER_ENDPOINT_STAGING,
-      env.SCRAPER_API_KEY,
+      scraperApiKey ?? undefined,
       env.DTAKO_R2_PREFIX,
     );
   }
