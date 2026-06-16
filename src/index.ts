@@ -31,10 +31,16 @@ export default {
     const route = pickRoute(hostRaw, env);
     if (!route) {
       // どの host にも一致しなかった / required env 欠落で silent drop。
-      // 切り分け用に host と設定値を message 文字列に埋める (構造化引数は出ない)。
+      // 切り分け用に host・設定値・各 required field の有無/型を message 文字列に
+      // 埋める (構造化引数は CF Observability に出ない)。secret は値を出さず
+      // presence + typeof のみ (= 漏洩なし)。
       console.log(
         `email-receiver: no route for host (to=${message.to} host=${hostRaw} ` +
-          `prodHost=${env.PROD_HOST ?? "<default>"} stagingHost=${env.STAGING_HOST ?? "<default>"})`,
+          `prodHost=${env.PROD_HOST ?? "<default>"} stagingHost=${env.STAGING_HOST ?? "<default>"} ` +
+          `hasAlcBase=${!!env.ALC_API_BASE} hasTenant=${!!env.DTAKO_TENANT_ID} ` +
+          `hasScraperEp=${!!env.SCRAPER_ENDPOINT} ` +
+          `iss=${typeof env.INTERNAL_SHARED_SECRET}/${!!env.INTERNAL_SHARED_SECRET} ` +
+          `sak=${typeof env.SCRAPER_API_KEY}/${!!env.SCRAPER_API_KEY})`,
       );
       return;
     }
