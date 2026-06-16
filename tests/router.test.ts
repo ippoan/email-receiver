@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pickRoute } from "../src/router";
-import type { Env } from "../src/env";
+import { resolveSecretBinding, type Env, type SecretsStoreSecret } from "../src/env";
 
 const fullEnv: Env = {
   // shared
@@ -20,9 +20,13 @@ const fullEnv: Env = {
   STAGING_HOST: "dtako-staging.ippoan.org",
 };
 
+const storeBinding = (value: string): SecretsStoreSecret => ({
+  get: () => Promise.resolve(value),
+});
+
 describe("pickRoute", () => {
-  it("returns prod target for prod host", () => {
-    const r = pickRoute("dtako.ippoan.org", fullEnv);
+  it("returns prod target for prod host", async () => {
+    const r = await pickRoute("dtako.ippoan.org", fullEnv);
     expect(r).toEqual({
       env: "prod",
       alcApiBase: "https://alc-api.example.com",
@@ -34,8 +38,8 @@ describe("pickRoute", () => {
     });
   });
 
-  it("returns staging target reusing shared secrets but staging endpoint / tenant", () => {
-    const r = pickRoute("dtako-staging.ippoan.org", fullEnv);
+  it("returns staging target reusing shared secrets but staging endpoint / tenant", async () => {
+    const r = await pickRoute("dtako-staging.ippoan.org", fullEnv);
     expect(r?.env).toBe("staging");
     expect(r?.alcApiBase).toBe("https://alc-api-staging.example.com");
     expect(r?.tenantId).toBe("22222222-2222-2222-2222-222222222222");
@@ -45,22 +49,22 @@ describe("pickRoute", () => {
     expect(r?.scraperApiKey).toBe("shared-scraper");
   });
 
-  it("is case-insensitive on host", () => {
-    expect(pickRoute("DTAKO.IPPOAN.ORG", fullEnv)?.env).toBe("prod");
-    expect(pickRoute("Dtako-Staging.Ippoan.Org", fullEnv)?.env).toBe("staging");
+  it("is case-insensitive on host", async () => {
+    expect((await pickRoute("DTAKO.IPPOAN.ORG", fullEnv))?.env).toBe("prod");
+    expect((await pickRoute("Dtako-Staging.Ippoan.Org", fullEnv))?.env).toBe("staging");
   });
 
-  it("returns null for unknown host (silent drop)", () => {
-    expect(pickRoute("evil.example.com", fullEnv)).toBeNull();
-    expect(pickRoute("ippoan.org", fullEnv)).toBeNull();
+  it("returns null for unknown host (silent drop)", async () => {
+    expect(await pickRoute("evil.example.com", fullEnv)).toBeNull();
+    expect(await pickRoute("ippoan.org", fullEnv)).toBeNull();
   });
 
-  it("returns null when prod env is missing required values", () => {
+  it("returns null when prod env is missing required values", async () => {
     const broken: Env = { ...fullEnv, DTAKO_TENANT_ID: "" };
-    expect(pickRoute("dtako.ippoan.org", broken)).toBeNull();
+    expect(await pickRoute("dtako.ippoan.org", broken)).toBeNull();
   });
 
-  it("returns null when staging env is missing required values", () => {
+  it("returns null when staging env is missing required values", async () => {
     const noStaging: Env = {
       INTERNAL_SHARED_SECRET: fullEnv.INTERNAL_SHARED_SECRET,
       SCRAPER_API_KEY: fullEnv.SCRAPER_API_KEY,
@@ -71,24 +75,69 @@ describe("pickRoute", () => {
       PROD_HOST: fullEnv.PROD_HOST,
       STAGING_HOST: fullEnv.STAGING_HOST,
     };
-    expect(pickRoute("dtako-staging.ippoan.org", noStaging)).toBeNull();
+    expect(await pickRoute("dtako-staging.ippoan.org", noStaging)).toBeNull();
   });
 
-  it("falls back to default hosts when PROD_HOST / STAGING_HOST omitted", () => {
+  it("falls back to default hosts when PROD_HOST / STAGING_HOST omitted", async () => {
     const noHosts: Env = { ...fullEnv };
     delete noHosts.PROD_HOST;
     delete noHosts.STAGING_HOST;
-    expect(pickRoute("dtako.ippoan.org", noHosts)?.env).toBe("prod");
-    expect(pickRoute("dtako-staging.ippoan.org", noHosts)?.env).toBe("staging");
+    expect((await pickRoute("dtako.ippoan.org", noHosts))?.env).toBe("prod");
+    expect((await pickRoute("dtako-staging.ippoan.org", noHosts))?.env).toBe("staging");
   });
 
-  it("uses DTAKO_R2_PREFIX for both prod and staging routes", () => {
-    expect(pickRoute("dtako.ippoan.org", fullEnv)?.r2Prefix).toBe("dtako-tickets");
-    expect(pickRoute("dtako-staging.ippoan.org", fullEnv)?.r2Prefix).toBe("dtako-tickets");
+  it("uses DTAKO_R2_PREFIX for both prod and staging routes", async () => {
+    expect((await pickRoute("dtako.ippoan.org", fullEnv))?.r2Prefix).toBe("dtako-tickets");
+    expect((await pickRoute("dtako-staging.ippoan.org", fullEnv))?.r2Prefix).toBe("dtako-tickets");
   });
 
-  it("defaults r2Prefix to empty string when DTAKO_R2_PREFIX absent", () => {
+  it("defaults r2Prefix to empty string when DTAKO_R2_PREFIX absent", async () => {
     const noR2: Env = { ...fullEnv, DTAKO_R2_PREFIX: undefined as unknown as string };
-    expect(pickRoute("dtako.ippoan.org", noR2)?.r2Prefix).toBe("");
+    expect((await pickRoute("dtako.ippoan.org", noR2))?.r2Prefix).toBe("");
+  });
+
+  it("resolves Secrets Store binding via .get() (regression of epic 401 root cause)", async () => {
+    const storeEnv: Env = {
+      ...fullEnv,
+      INTERNAL_SHARED_SECRET: storeBinding("resolved-internal-from-store"),
+      SCRAPER_API_KEY: storeBinding("resolved-scraper-from-store"),
+    };
+    const r = await pickRoute("dtako.ippoan.org", storeEnv);
+    expect(r?.internalSharedSecret).toBe("resolved-internal-from-store");
+    expect(r?.scraperApiKey).toBe("resolved-scraper-from-store");
+  });
+
+  it("returns null when Secrets Store binding throws on .get()", async () => {
+    const broken: Env = {
+      ...fullEnv,
+      INTERNAL_SHARED_SECRET: { get: () => Promise.reject(new Error("nope")) },
+    };
+    expect(await pickRoute("dtako.ippoan.org", broken)).toBeNull();
+  });
+});
+
+describe("resolveSecretBinding", () => {
+  it("returns the string as-is", async () => {
+    expect(await resolveSecretBinding("plain")).toBe("plain");
+  });
+
+  it("returns null for empty / undefined binding", async () => {
+    expect(await resolveSecretBinding(undefined)).toBeNull();
+    expect(await resolveSecretBinding("")).toBeNull();
+  });
+
+  it("calls .get() on Secrets Store binding", async () => {
+    expect(await resolveSecretBinding(storeBinding("xyz"))).toBe("xyz");
+  });
+
+  it("returns null when .get() throws", async () => {
+    const bad: SecretsStoreSecret = { get: () => Promise.reject(new Error("boom")) };
+    expect(await resolveSecretBinding(bad)).toBeNull();
+  });
+
+  it("returns null for object without .get()", async () => {
+    // wrangler dev / mock 等で誤って object を渡された場合の防御
+    expect(await resolveSecretBinding({ wrong: "shape" } as unknown as SecretsStoreSecret))
+      .toBeNull();
   });
 });

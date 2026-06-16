@@ -28,7 +28,7 @@ export default {
       return;
     }
 
-    const route = pickRoute(hostRaw, env);
+    const route = await pickRoute(hostRaw, env);
     if (!route) {
       // どの host にも一致しなかった / required env 欠落で silent drop。
       // CF Observability は console.log の構造化第2引数 (`{ ... }`) を展開
