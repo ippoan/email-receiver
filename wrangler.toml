@@ -50,15 +50,25 @@ binding = "SCRAPER_API_KEY"
 store_id = "bd7bc91a3e5f4111add4acf6cb4b8733"
 secret_name = "dtako-scraper-api-key"
 
+# rust-alc-api は GCP Cloud Run なので直接 service binding は張れない。CF→GCP の OIDC
+# mint を auth-worker `/alc-internal-proxy` に委譲する (Refs ippoan/rust-alc-api#434
+# caller #4)。prod 宛 (dtako.ippoan.org) は AUTH_WORKER (= prod auth-worker)、staging 宛
+# (dtako-staging.ippoan.org) は AUTH_WORKER_STAGING を使う。
+[[services]]
+binding = "AUTH_WORKER"
+service = "auth-worker"
+
+[[services]]
+binding = "AUTH_WORKER_STAGING"
+service = "auth-worker-staging"
+
 [vars]
-# prod backend / scraper / tenant
-ALC_API_BASE = "https://alc-api.ippoan.org"
+# prod scraper / tenant (rust-alc-api への到達は AUTH_WORKER service binding 経由)
 DTAKO_TENANT_ID = ""
 SCRAPER_ENDPOINT = "https://dtako-scraper-566bls5vfq-an.a.run.app/scrape-vehicle-setting"
 DTAKO_R2_PREFIX = "dtako-tickets"
 
-# staging backend / scraper / tenant (host=dtako-staging.ippoan.org 用、secret は共有)
-ALC_API_BASE_STAGING = "https://rust-alc-api-staging-566bls5vfq-an.a.run.app"
+# staging scraper / tenant (host=dtako-staging.ippoan.org 用、secret は共有)
 # staging Supabase の test tenant UUID (Refs rust-alc-api staging/test-data.json)。
 # rust-alc-api staging は揮発 DB なので毎回マイグレーション後にこの UUID で再投入される。
 DTAKO_TENANT_ID_STAGING = "11111111-1111-1111-1111-111111111111"
@@ -82,13 +92,19 @@ enabled = true
 head_sampling_rate = 1.0
 
 [env.staging.vars]
-ALC_API_BASE = "https://rust-alc-api-staging-566bls5vfq-an.a.run.app"
+# rust-alc-api への到達は AUTH_WORKER service binding 経由 (= auth-worker-staging)
 # rust-alc-api staging の test tenant UUID
 DTAKO_TENANT_ID = "11111111-1111-1111-1111-111111111111"
 SCRAPER_ENDPOINT = "https://dtako-scraper-staging-566bls5vfq-an.a.run.app/scrape-vehicle-setting"
 DTAKO_R2_PREFIX = "dtako-tickets-staging"
 PROD_HOST = "dtako-staging.ippoan.org"
 STAGING_HOST = "dtako-staging.ippoan.org"
+
+# staging Worker は PROD_HOST=dtako-staging なので AUTH_WORKER (prod route 用) を
+# auth-worker-staging に向ける。
+[[env.staging.services]]
+binding = "AUTH_WORKER"
+service = "auth-worker-staging"
 
 [[env.staging.secrets_store_secrets]]
 binding = "INTERNAL_SHARED_SECRET"
