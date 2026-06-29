@@ -32,4 +32,11 @@ jobs:
       deploy_staging_script: 'npx wrangler deploy --env staging'
       # `v*` tag push → prod deploy (host で prod/staging を分岐する catch-all 受け本体)
       deploy_release_script: 'npx wrangler deploy'
+      # email-receiver は Email Routing catch-all の単一受け本体で、no-traffic flip /
+      # Release Wave 対象ではない。frontend-ci の release_no_traffic は default true で
+      # release の `wrangler deploy` を `wrangler versions upload` に置換するが、それは
+      # **既存 Worker 前提**で初回 prod deploy をブートストラップできず 10007
+      # ("This Worker does not exist") で落ちる (staging は plain `wrangler deploy` なので
+      # 作成できていた)。false にして release も即 100% の plain deploy にする。
+      release_no_traffic: false
     secrets: inherit
