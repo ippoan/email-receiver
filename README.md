@@ -22,10 +22,17 @@ domain 固有 handler に dispatch する Worker。
   └ dispatchEmail()
       └ handleDtakoEmail()
           ├ subject parser で vehicle_name 抽出
-          ├ POST  ${ALC_API_BASE}/api/dtako/tickets        (X-Internal-Shared-Secret)
-          ├ POST  ${SCRAPER_ENDPOINT}                       (X-Scraper-API-Key)
-          └ PATCH ${ALC_API_BASE}/api/dtako/tickets/{id}/scraped
+          ├ POST  AUTH_WORKER → /alc-internal-proxy/api/dtako/tickets        (X-Alc-Proxy-Secret + X-Tenant-ID)
+          ├ POST  ${SCRAPER_ENDPOINT}                                         (X-Scraper-API-Key)
+          └ PATCH AUTH_WORKER → /alc-internal-proxy/api/dtako/tickets/{id}/scraped
 ```
+
+rust-alc-api (GCP Cloud Run) は Cloud Run IAM lockdown 後 OIDC を要求するが、
+email-receiver は browser JWT を持たない server-to-server 呼び出しなので、
+**auth-worker への service binding (`AUTH_WORKER`) 経由で `/alc-internal-proxy`** を叩く。
+auth-worker が consumer proof (`X-Alc-Proxy-Secret`) を検証し OIDC mint +
+`X-Internal-Shared-Secret` 付与して rust に forward する (Refs ippoan/rust-alc-api#434 caller #4)。
+scraper (dtako-scraper VPS) は rust ではないので従来どおり直 fetch。
 
 依存先 API は別 PR で進行中:
 
@@ -114,17 +121,27 @@ npx wrangler deploy --env staging
 
 ## Secrets
 
-- `INTERNAL_SHARED_SECRET` — rust-alc-api との shared secret。CF Secrets Store + GCP Secret
-  Manager (`secrets-inventory` MCP) 経由で配布。auth-worker 等と同 binding 名で揃える。
+- `INTERNAL_SHARED_SECRET` — auth-worker `/alc-internal-proxy` への consumer proof
+  (`X-Alc-Proxy-Secret`)。CF Secrets Store + GCP Secret Manager (`secrets-inventory` MCP)
+  経由で配布。auth-worker 等と同 binding 名・同値で揃える。
 - `SCRAPER_API_KEY` — dtako-scraper との shared secret。同様に Secrets Store 経由。
 
 `wrangler secret put` は使わない (secrets-inventory get_drift から見えないため)。
+
+## Service bindings (`wrangler.toml [[services]]`)
+
+| binding | service | 用途 |
+|---|---|---|
+| `AUTH_WORKER` | `auth-worker` | prod 宛 (dtako.ippoan.org) の rust-alc-api 到達 (`/alc-internal-proxy` 経由) |
+| `AUTH_WORKER_STAGING` | `auth-worker-staging` | staging 宛 (dtako-staging.ippoan.org) の到達 |
+
+rust-alc-api は GCP Cloud Run なので直接 service binding は張れず、CF→GCP の OIDC mint を
+auth-worker `/alc-internal-proxy` に委譲する (Refs ippoan/rust-alc-api#434 caller #4)。
 
 ## Vars (`wrangler.toml [vars]`)
 
 | key | 用途 |
 |---|---|
-| `ALC_API_BASE` | rust-alc-api のベース URL |
 | `DTAKO_TENANT_ID` | 起票時に渡す `X-Tenant-ID` (v1 は env 固定) |
 | `SCRAPER_ENDPOINT` | dtako-scraper `POST /scrape-vehicle-setting` の完全 URL |
 | `DTAKO_R2_PREFIX` | R2 保管時の key prefix (将来 R2 binding 追加時) |

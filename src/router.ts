@@ -1,4 +1,4 @@
-import { type Env, resolveSecretBinding } from "./env";
+import { type Env, type ServiceBinding, resolveSecretBinding } from "./env";
 
 /**
  * host (subdomain) を見て env を解決した「1 配送先分の設定束」。
@@ -14,7 +14,8 @@ import { type Env, resolveSecretBinding } from "./env";
  */
 export interface RouteTarget {
   env: "prod" | "staging";
-  alcApiBase: string;
+  /** auth-worker への service binding。`/alc-internal-proxy` 経由で rust-alc-api を叩く。 */
+  authWorker: ServiceBinding;
   internalSharedSecret: string;
   tenantId: string;
   scraperEndpoint: string;
@@ -27,7 +28,7 @@ const DEFAULT_STAGING_HOST = "dtako-staging.ippoan.org";
 
 function asTarget(
   envName: "prod" | "staging",
-  alcApiBase: string | undefined,
+  authWorker: ServiceBinding | undefined,
   internalSharedSecret: string | undefined,
   tenantId: string | undefined,
   scraperEndpoint: string | undefined,
@@ -35,14 +36,14 @@ function asTarget(
   r2Prefix: string | undefined,
 ): RouteTarget | null {
   if (
-    !alcApiBase || !internalSharedSecret || !tenantId ||
+    !authWorker || !internalSharedSecret || !tenantId ||
     !scraperEndpoint || !scraperApiKey
   ) {
     return null;
   }
   return {
     env: envName,
-    alcApiBase,
+    authWorker,
     internalSharedSecret,
     tenantId,
     scraperEndpoint,
@@ -78,7 +79,7 @@ export async function pickRoute(host: string, env: Env): Promise<RouteTarget | n
   if (h === prodHost) {
     return asTarget(
       "prod",
-      env.ALC_API_BASE,
+      env.AUTH_WORKER,
       internalSharedSecret ?? undefined,
       env.DTAKO_TENANT_ID,
       env.SCRAPER_ENDPOINT,
@@ -89,7 +90,7 @@ export async function pickRoute(host: string, env: Env): Promise<RouteTarget | n
   if (h === stagingHost) {
     return asTarget(
       "staging",
-      env.ALC_API_BASE_STAGING,
+      env.AUTH_WORKER_STAGING,
       internalSharedSecret ?? undefined,
       env.DTAKO_TENANT_ID_STAGING,
       env.SCRAPER_ENDPOINT_STAGING,

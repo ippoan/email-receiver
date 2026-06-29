@@ -2,6 +2,13 @@ import type { RouteTarget } from "../router";
 import { parseDtakoSubject } from "../parsers/dtako-subject";
 
 /**
+ * service binding fetch 用の絶対 URL base。host は binding が無視するが path が
+ * `/alc-internal-proxy/...` で始まる必要がある (auth-worker 側が prefix を slice して
+ * rust-alc-api に forward するため)。
+ */
+const INTERNAL_PROXY_BASE = "https://auth-worker.internal";
+
+/**
  * dtako SD カードエラー通知メール用 handler。
  *
  * pipeline:
@@ -9,6 +16,12 @@ import { parseDtakoSubject } from "../parsers/dtako-subject";
  *   2. rust-alc-api POST /api/dtako/tickets で起票 (id を受け取る)
  *   3. dtako-scraper POST /scrape-vehicle-setting で F-VOS3020 設定 ZIP DL
  *   4. rust-alc-api PATCH /api/dtako/tickets/{id}/scraped で結果反映
+ *
+ * 2 / 4 の rust-alc-api 呼び出しは **auth-worker `/alc-internal-proxy` への service
+ * binding 経由** で行う (Refs ippoan/rust-alc-api#434 caller #4)。Cloud Run IAM
+ * lockdown 後は OIDC が要るが、email-receiver は browser JWT を持たない server-to-server
+ * 呼び出しなので、consumer proof (`X-Alc-Proxy-Secret`) + 明示 `X-Tenant-ID` を auth-worker
+ * に渡し、OIDC mint + `X-Internal-Shared-Secret` 付与 + forward を auth-worker に委譲する。
  *
  * 失敗時の方針:
  *   - ステップ 1 でマッチしなければ `{ matched: false }` を返す (= silent drop)
@@ -96,7 +109,7 @@ async function createTicket(
   errorKind: string,
   route: RouteTarget,
 ): Promise<string> {
-  const url = `${route.alcApiBase.replace(/\/$/, "")}/api/dtako/tickets`;
+  const url = `${INTERNAL_PROXY_BASE}/alc-internal-proxy/api/dtako/tickets`;
   const body = {
     source: "email",
     source_email_subject: email.subject,
@@ -112,11 +125,11 @@ async function createTicket(
     `dtako handler: createTicket fingerprint (route=${route.env} url=${url} ` +
       `tenant=${route.tenantId} secret_sha256_prefix=${secretFp})`,
   );
-  const res = await fetch(url, {
+  const res = await route.authWorker.fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Internal-Shared-Secret": route.internalSharedSecret,
+      "X-Alc-Proxy-Secret": route.internalSharedSecret,
       "X-Tenant-ID": route.tenantId,
     },
     body: JSON.stringify(body),
@@ -176,7 +189,8 @@ async function patchScraped(
   scrape: ScrapeResponse,
   route: RouteTarget,
 ): Promise<void> {
-  const url = `${route.alcApiBase.replace(/\/$/, "")}/api/dtako/tickets/${ticketId}/scraped`;
+  const url =
+    `${INTERNAL_PROXY_BASE}/alc-internal-proxy/api/dtako/tickets/${ticketId}/scraped`;
   const body = {
     comp_id: scrape.comp_id ?? null,
     unko_no: scrape.unko_no ?? null,
@@ -185,11 +199,11 @@ async function patchScraped(
     settings_zip_r2_key: scrape.zip_path ?? null,
     scraped_payload: scrape,
   };
-  const res = await fetch(url, {
+  const res = await route.authWorker.fetch(url, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      "X-Internal-Shared-Secret": route.internalSharedSecret,
+      "X-Alc-Proxy-Secret": route.internalSharedSecret,
       "X-Tenant-ID": route.tenantId,
     },
     body: JSON.stringify(body),

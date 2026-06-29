@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { pickRoute } from "../src/router";
-import { resolveSecretBinding, type Env, type SecretsStoreSecret } from "../src/env";
+import {
+  resolveSecretBinding,
+  type Env,
+  type SecretsStoreSecret,
+  type ServiceBinding,
+} from "../src/env";
+
+// auth-worker service binding の sentinel (=== で同一性を確認するため別 object)
+const authWorkerProd: ServiceBinding = { fetch: (async () => new Response()) as typeof fetch };
+const authWorkerStaging: ServiceBinding = { fetch: (async () => new Response()) as typeof fetch };
 
 const fullEnv: Env = {
   // shared
@@ -8,11 +17,11 @@ const fullEnv: Env = {
   SCRAPER_API_KEY: "shared-scraper",
   DTAKO_R2_PREFIX: "dtako-tickets",
   // prod
-  ALC_API_BASE: "https://alc-api.example.com",
+  AUTH_WORKER: authWorkerProd,
   DTAKO_TENANT_ID: "11111111-1111-1111-1111-111111111111",
   SCRAPER_ENDPOINT: "https://scraper.example.com/scrape-vehicle-setting",
   // staging
-  ALC_API_BASE_STAGING: "https://alc-api-staging.example.com",
+  AUTH_WORKER_STAGING: authWorkerStaging,
   DTAKO_TENANT_ID_STAGING: "22222222-2222-2222-2222-222222222222",
   SCRAPER_ENDPOINT_STAGING: "https://scraper-staging.example.com/scrape-vehicle-setting",
   // hosts
@@ -29,19 +38,20 @@ describe("pickRoute", () => {
     const r = await pickRoute("dtako.ippoan.org", fullEnv);
     expect(r).toEqual({
       env: "prod",
-      alcApiBase: "https://alc-api.example.com",
+      authWorker: authWorkerProd,
       internalSharedSecret: "shared-internal",
       tenantId: "11111111-1111-1111-1111-111111111111",
       scraperEndpoint: "https://scraper.example.com/scrape-vehicle-setting",
       scraperApiKey: "shared-scraper",
       r2Prefix: "dtako-tickets",
     });
+    expect(r?.authWorker).toBe(authWorkerProd);
   });
 
   it("returns staging target reusing shared secrets but staging endpoint / tenant", async () => {
     const r = await pickRoute("dtako-staging.ippoan.org", fullEnv);
     expect(r?.env).toBe("staging");
-    expect(r?.alcApiBase).toBe("https://alc-api-staging.example.com");
+    expect(r?.authWorker).toBe(authWorkerStaging);
     expect(r?.tenantId).toBe("22222222-2222-2222-2222-222222222222");
     expect(r?.scraperEndpoint).toBe("https://scraper-staging.example.com/scrape-vehicle-setting");
     // secret は prod / staging で同一値 (Refs auth-worker CLAUDE.md "2026-05-24: 統合")
@@ -69,12 +79,13 @@ describe("pickRoute", () => {
       INTERNAL_SHARED_SECRET: fullEnv.INTERNAL_SHARED_SECRET,
       SCRAPER_API_KEY: fullEnv.SCRAPER_API_KEY,
       DTAKO_R2_PREFIX: fullEnv.DTAKO_R2_PREFIX,
-      ALC_API_BASE: fullEnv.ALC_API_BASE,
+      AUTH_WORKER: fullEnv.AUTH_WORKER,
       DTAKO_TENANT_ID: fullEnv.DTAKO_TENANT_ID,
       SCRAPER_ENDPOINT: fullEnv.SCRAPER_ENDPOINT,
       PROD_HOST: fullEnv.PROD_HOST,
       STAGING_HOST: fullEnv.STAGING_HOST,
     };
+    // AUTH_WORKER_STAGING 未設定 → staging route は null
     expect(await pickRoute("dtako-staging.ippoan.org", noStaging)).toBeNull();
   });
 

@@ -14,6 +14,14 @@ export type SecretsStoreSecret = { get(): Promise<string> };
 export type SecretBinding = SecretsStoreSecret | string | undefined;
 
 /**
+ * auth-worker への service binding (`[[services]]`)。`.fetch()` で worker-to-worker
+ * (CF 内、公開せず) に到達する。rust-alc-api は GCP Cloud Run なので直接 binding は
+ * 張れず、CF→GCP の OIDC mint を auth-worker `/alc-internal-proxy` に委譲する
+ * (Refs ippoan/rust-alc-api#434 caller #4)。
+ */
+export type ServiceBinding = { fetch: typeof fetch };
+
+/**
  * Worker bindings + vars.
  *
  * 1 つの prod Worker が `*@ippoan.org` の catch-all を受け、`message.to` の host
@@ -28,7 +36,8 @@ export type SecretBinding = SecretsStoreSecret | string | undefined;
  */
 export interface Env {
   // ---- shared (prod / staging 共通) ----
-  /** rust-alc-api との shared secret (Secrets Store binding)。`.get()` 経由でのみ実値を取れる。 */
+  /** rust-alc-api との shared secret (Secrets Store binding)。`.get()` 経由でのみ実値を取れる。
+   *  auth-worker `/alc-internal-proxy` への consumer proof (`X-Alc-Proxy-Secret`) に使う。 */
   INTERNAL_SHARED_SECRET: SecretBinding;
   /** dtako-scraper との shared secret (Secrets Store binding)。`.get()` 経由でのみ実値を取れる。 */
   SCRAPER_API_KEY: SecretBinding;
@@ -36,8 +45,8 @@ export interface Env {
   DTAKO_R2_PREFIX: string;
 
   // ---- prod (default) ----
-  /** rust-alc-api ベース URL (e.g. `https://alc-api.ippoan.org`)。 */
-  ALC_API_BASE: string;
+  /** auth-worker (prod) への service binding。`/alc-internal-proxy` 経由で rust-alc-api を叩く。 */
+  AUTH_WORKER: ServiceBinding;
   /** 起票時に渡す `X-Tenant-ID`。v1 は env 固定 (multi-tenant 化までは 1 社想定)。 */
   DTAKO_TENANT_ID: string;
   /** dtako-scraper の `POST /scrape-vehicle-setting` 完全 URL。 */
@@ -45,8 +54,9 @@ export interface Env {
 
   // ---- staging (任意) ----
   // staging route を有効化するには 3 つすべて埋める必要がある (どれか欠ければ
-  // pickRoute が null を返し silent drop)。
-  ALC_API_BASE_STAGING?: string;
+  // pickRoute が null を返し silent drop)。prod Worker が dtako-staging 宛メールを
+  // 受けたときは AUTH_WORKER_STAGING (= auth-worker-staging binding) を使う。
+  AUTH_WORKER_STAGING?: ServiceBinding;
   DTAKO_TENANT_ID_STAGING?: string;
   SCRAPER_ENDPOINT_STAGING?: string;
 

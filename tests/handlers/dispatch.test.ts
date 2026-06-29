@@ -4,7 +4,8 @@ import type { RouteTarget } from "../../src/router";
 
 const route: RouteTarget = {
   env: "prod",
-  alcApiBase: "https://alc-api.example.com",
+  // createTicket は authWorker (/alc-internal-proxy) 経由。500 を返して throw させる。
+  authWorker: { fetch: (async () => new Response("nope", { status: 500 })) as typeof fetch },
   internalSharedSecret: "s",
   tenantId: "",
   scraperEndpoint: "https://scraper.example.com/scrape-vehicle-setting",
