@@ -100,3 +100,45 @@ export async function pickRoute(host: string, env: Env): Promise<RouteTarget | n
   }
   return null;
 }
+
+/**
+ * 勤怠申請 (leave) の配送先。dtako の `RouteTarget` (scraper 等が必須) とは別の
+ * 小さい型にして、dtako 用の必須チェックに巻き込まない。
+ */
+export interface LeaveRoute {
+  env: "prod" | "staging";
+  /** rust-leave-worker への service binding。`/internal/ingest` を叩く。 */
+  leaveWorker: ServiceBinding;
+  internalSharedSecret: string;
+}
+
+export type LeaveRouteResult =
+  | { kind: "leave"; route: LeaveRoute }
+  /** leave host には当たったが binding / secret が欠けている (dtako へは落とさない)。 */
+  | { kind: "unavailable"; env: "prod" | "staging" };
+
+const DEFAULT_LEAVE_HOST = "leave.ippoan.org";
+const DEFAULT_LEAVE_STAGING_HOST = "leave-staging.ippoan.org";
+
+/**
+ * `message.to` の host が leave / leave-staging なら配送先を返す。どちらでもなければ
+ * `null` (= 呼び出し側は従来どおり `pickRoute` の dtako 判定へ進む)。
+ * secret は `resolveSecretBinding()` で必ず実値にする (上の doc の 401 の経緯)。
+ */
+export async function pickLeaveRoute(host: string, env: Env): Promise<LeaveRouteResult | null> {
+  const h = host.toLowerCase();
+  let envName: "prod" | "staging";
+  let leaveWorker: ServiceBinding | undefined;
+  if (h === (env.LEAVE_HOST ?? DEFAULT_LEAVE_HOST).toLowerCase()) {
+    envName = "prod";
+    leaveWorker = env.LEAVE_WORKER;
+  } else if (h === (env.LEAVE_STAGING_HOST ?? DEFAULT_LEAVE_STAGING_HOST).toLowerCase()) {
+    envName = "staging";
+    leaveWorker = env.LEAVE_WORKER_STAGING;
+  } else {
+    return null;
+  }
+  const internalSharedSecret = await resolveSecretBinding(env.INTERNAL_SHARED_SECRET);
+  if (!leaveWorker || !internalSharedSecret) return { kind: "unavailable", env: envName };
+  return { kind: "leave", route: { env: envName, leaveWorker, internalSharedSecret } };
+}

@@ -8,6 +8,7 @@ domain 固有 handler に dispatch する Worker。
 | handler | 受信対象 | 処理 |
 |---|---|---|
 | `dtako` | `[web金星号] SDカードエラー通知メール … (XX) 車両名` | rust-alc-api で起票 → dtako-scraper で F-VOS3020 設定 ZIP DL → PATCH で結果反映 |
+| `leave` | `<mailbox>@leave.ippoan.org` の PDF 添付 (host で決まる。dispatcher の前で分岐) | Cloudflare の認証結果を確認し、PDF ごとに rust-leave-worker `/internal/ingest` へ POST |
 
 新しい email 種別を増やす場合は `src/handlers/<name>.ts` を追加し、
 `src/handlers/index.ts` の dispatcher に 1 行追加するだけで良い設計。

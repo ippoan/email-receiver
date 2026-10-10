@@ -62,6 +62,17 @@ service = "auth-worker"
 binding = "AUTH_WORKER_STAGING"
 service = "auth-worker-staging"
 
+# 勤怠申請 (leave): host (leave.ippoan.org / leave-staging.ippoan.org) で dtako より先に
+# 分岐し、PDF 添付を rust-leave-worker の POST /internal/ingest に渡す。secret は
+# 既存の INTERNAL_SHARED_SECRET (Secrets Store) を再利用する。
+[[services]]
+binding = "LEAVE_WORKER"
+service = "rust-leave-worker"
+
+[[services]]
+binding = "LEAVE_WORKER_STAGING"
+service = "rust-leave-worker-staging"
+
 [vars]
 # prod scraper / tenant (rust-alc-api への到達は AUTH_WORKER service binding 経由)
 DTAKO_TENANT_ID = ""
@@ -77,6 +88,8 @@ SCRAPER_ENDPOINT_STAGING = "https://dtako-scraper-staging-566bls5vfq-an.a.run.ap
 # host 分岐の subdomain (省略時 router.ts の DEFAULT_*)
 PROD_HOST = "dtako.ippoan.org"
 STAGING_HOST = "dtako-staging.ippoan.org"
+LEAVE_HOST = "leave.ippoan.org"
+LEAVE_STAGING_HOST = "leave-staging.ippoan.org"
 
 # staging Worker (CI 都合で deploy はされるが Email Routing の catch-all は 1 つしか
 # 持てないので実質受信しない。手元 wrangler dev / canary 用途のみ想定)。
@@ -99,12 +112,23 @@ SCRAPER_ENDPOINT = "https://dtako-scraper-staging-566bls5vfq-an.a.run.app/scrape
 DTAKO_R2_PREFIX = "dtako-tickets-staging"
 PROD_HOST = "dtako-staging.ippoan.org"
 STAGING_HOST = "dtako-staging.ippoan.org"
+LEAVE_HOST = "leave-staging.ippoan.org"
+LEAVE_STAGING_HOST = "leave-staging.ippoan.org"
 
 # staging Worker は PROD_HOST=dtako-staging なので AUTH_WORKER (prod route 用) を
 # auth-worker-staging に向ける。
 [[env.staging.services]]
 binding = "AUTH_WORKER"
 service = "auth-worker-staging"
+
+# leave も同様 (named env は services を継承しないため再宣言)。
+[[env.staging.services]]
+binding = "LEAVE_WORKER"
+service = "rust-leave-worker-staging"
+
+[[env.staging.services]]
+binding = "LEAVE_WORKER_STAGING"
+service = "rust-leave-worker-staging"
 
 [[env.staging.secrets_store_secrets]]
 binding = "INTERNAL_SHARED_SECRET"
