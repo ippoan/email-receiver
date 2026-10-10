@@ -1,7 +1,7 @@
 name: publish
 
-# stable publish。`v*` tag (= 手動 stable release) で発火し、package.json の
-# version をそのまま `latest` dist-tag で GH Packages に publish する。
+# stable publish。`v*` tag (= 手動 stable release) で発火し、tag 名 (先頭の v を
+# 除く) を version にして `latest` dist-tag で GH Packages に publish する。
 #
 # dev prerelease の publish は dev-release.yml 側に同居している (mcp-cf-workers と
 # 同パターン)。GITHUB_TOKEN で push した tag は別 workflow を trigger しない仕様
@@ -18,5 +18,6 @@ jobs:
     uses: ippoan/ci-workflows/.github/workflows/lib-publish.yml@main
     with:
       node_version: '20'
+      version_from_tag: true
     secrets:
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
