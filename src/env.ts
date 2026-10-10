@@ -65,6 +65,17 @@ export interface Env {
   PROD_HOST?: string;
   /** staging を受ける subdomain (e.g. `dtako-staging.ippoan.org`)。 */
   STAGING_HOST?: string;
+
+  // ---- 勤怠申請 (leave) ----
+  // dtako とは独立した host / binding。secret は INTERNAL_SHARED_SECRET を再利用する。
+  /** rust-leave-worker (prod) への service binding。 */
+  LEAVE_WORKER?: ServiceBinding;
+  /** rust-leave-worker-staging への service binding。 */
+  LEAVE_WORKER_STAGING?: ServiceBinding;
+  /** leave を受ける host (省略時 `leave.ippoan.org`)。 */
+  LEAVE_HOST?: string;
+  /** leave staging を受ける host (省略時 `leave-staging.ippoan.org`)。 */
+  LEAVE_STAGING_HOST?: string;
 }
 
 /**

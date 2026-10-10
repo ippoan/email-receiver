@@ -2,7 +2,8 @@ import PostalMime from "postal-mime";
 import type { Env } from "./env";
 import { dispatchEmail } from "./handlers";
 import type { ParsedEmail } from "./handlers/dtako";
-import { pickRoute } from "./router";
+import { handleLeaveEmail } from "./handlers/leave";
+import { pickLeaveRoute, pickRoute } from "./router";
 
 const MAX_RAW_BYTES = 10 * 1024 * 1024;
 
@@ -25,6 +26,23 @@ export default {
     if (!hostRaw) {
       // host 実値は CF Observability の構造化引数に出ないため message 文字列に埋める。
       console.log(`email-receiver: missing host (to=${message.to})`);
+      return;
+    }
+
+    // 勤怠申請 (leave) は host だけで決まり subject では振り分けないため、
+    // dtako の pickRoute / dispatcher より前に分岐する。leave handler は
+    // 何があっても setReject しない (silent drop) ので例外もここで握る。
+    const leave = await pickLeaveRoute(hostRaw, env);
+    if (leave) {
+      if (leave.kind === "unavailable") {
+        console.log(`email-receiver: leave route unavailable (env=${leave.env} to=${message.to})`);
+        return;
+      }
+      try {
+        await handleLeaveEmail(message, leave.route);
+      } catch (e) {
+        console.error(`email-receiver: leave handler threw (env=${leave.route.env}) ${(e as Error).message}`);
+      }
       return;
     }
 
